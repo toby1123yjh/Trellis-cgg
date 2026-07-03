@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
 import path from "node:path";
 import { AI_TOOLS } from "../types/ai-tools.js";
 import { getClaudeTemplatePath } from "../templates/extract.js";
@@ -31,6 +31,29 @@ function shouldExclude(filename: string): boolean {
     }
   }
   return false;
+}
+
+/**
+ * Recursively copy directory, filtering out excluded files
+ */
+async function copyDirFiltered(source: string, dest: string): Promise<void> {
+  if (!existsSync(source)) return;
+
+  ensureDir(dest);
+
+  for (const entry of readdirSync(source, { withFileTypes: true })) {
+    if (shouldExclude(entry.name)) continue;
+
+    const srcPath = path.join(source, entry.name);
+    const destPath = path.join(dest, entry.name);
+
+    if (entry.isDirectory()) {
+      await copyDirFiltered(srcPath, destPath);
+    } else if (entry.isFile()) {
+      const content = readFileSync(srcPath, "utf-8");
+      await writeFile(destPath, content);
+    }
+  }
 }
 
 /**
@@ -142,4 +165,51 @@ export async function configureClaude(
     resolveSkills(ctx),
     resolveBundledSkills(ctx),
   );
+
+  // trellis-ccg: install ccg commands, agents, and prompts
+  await installTrellisCcgContent(cwd, destPath);
+}
+
+/**
+ * Install trellis-ccg content (commands, agents, prompts)
+ */
+async function installTrellisCcgContent(
+  cwd: string,
+  destPath: string,
+): Promise<void> {
+  const templatesRoot = getClaudeTemplatePath().replace(/[\/\\]claude$/, "");
+
+  // 1. Copy trellis-ccg commands to .claude/commands/trellis-ccg/
+  const ccgCommandsSource = path.join(templatesRoot, "common", "commands", "trellis-ccg");
+  const ccgCommandsDest = path.join(destPath, "commands", "trellis-ccg");
+  if (existsSync(ccgCommandsSource) && statSync(ccgCommandsSource).isDirectory()) {
+    await copyDirFiltered(ccgCommandsSource, ccgCommandsDest);
+  }
+
+  // 2. Copy trellis-ccg agents to .claude/agents/trellis-ccg/
+  const ccgAgentsSource = path.join(templatesRoot, "claude", "agents", "trellis-ccg");
+  const ccgAgentsDest = path.join(destPath, "agents", "trellis-ccg");
+  if (existsSync(ccgAgentsSource) && statSync(ccgAgentsSource).isDirectory()) {
+    await copyDirFiltered(ccgAgentsSource, ccgAgentsDest);
+  }
+
+  // 3. Copy multi-model prompts to home directory (~/.claude/.ccg/prompts/)
+  const homeDir = process.env.HOME || process.env.USERPROFILE || "";
+  if (homeDir) {
+    const globalCcgDir = path.join(homeDir, ".claude", ".ccg", "prompts");
+
+    // Copy codex prompts
+    const codexPromptsSource = path.join(templatesRoot, "common", "prompts", "codex");
+    const codexPromptsDest = path.join(globalCcgDir, "codex");
+    if (existsSync(codexPromptsSource) && statSync(codexPromptsSource).isDirectory()) {
+      await copyDirFiltered(codexPromptsSource, codexPromptsDest);
+    }
+
+    // Copy gemini prompts
+    const geminiPromptsSource = path.join(templatesRoot, "common", "prompts", "gemini");
+    const geminiPromptsDest = path.join(globalCcgDir, "gemini");
+    if (existsSync(geminiPromptsSource) && statSync(geminiPromptsSource).isDirectory()) {
+      await copyDirFiltered(geminiPromptsSource, geminiPromptsDest);
+    }
+  }
 }
