@@ -1,0 +1,62 @@
+name: Build codeagent-wrapper binaries
+
+on:
+  workflow_dispatch:  # 手动触发
+  push:
+    paths:
+      - '.github/workflows/build-wrapper.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout trellis-ccg
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Clone ccg-workflow
+        run: |
+          git clone https://github.com/your-org/ccg-workflow.git /tmp/ccg-workflow
+          # 如果是私有仓库，需要配置 token
+
+      - name: Build all platforms
+        run: |
+          cd /tmp/ccg-workflow/codeagent-wrapper
+
+          echo "Building for macOS (amd64)..."
+          GOOS=darwin GOARCH=amd64 go build -o codeagent-wrapper-darwin-amd64 .
+
+          echo "Building for macOS (arm64)..."
+          GOOS=darwin GOARCH=arm64 go build -o codeagent-wrapper-darwin-arm64 .
+
+          echo "Building for Linux (amd64)..."
+          GOOS=linux GOARCH=amd64 go build -o codeagent-wrapper-linux-amd64 .
+
+          echo "Building for Linux (arm64)..."
+          GOOS=linux GOARCH=arm64 go build -o codeagent-wrapper-linux-arm64 .
+
+          echo "Building for Windows (amd64)..."
+          GOOS=windows GOARCH=amd64 go build -o codeagent-wrapper-windows-amd64.exe .
+
+          echo "Building for Windows (arm64)..."
+          GOOS=windows GOARCH=arm64 go build -o codeagent-wrapper-windows-arm64.exe .
+
+      - name: Copy binaries to trellis-ccg
+        run: |
+          mkdir -p ${{ github.workspace }}/packages/cli/bin
+          cp /tmp/ccg-workflow/codeagent-wrapper/codeagent-wrapper-* ${{ github.workspace }}/packages/cli/bin/
+          ls -lh ${{ github.workspace }}/packages/cli/bin/
+
+      - name: Commit and push binaries
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add packages/cli/bin/codeagent-wrapper-*
+          git commit -m "chore: add prebuilt codeagent-wrapper binaries for all platforms" || echo "No changes to commit"
+          git push
