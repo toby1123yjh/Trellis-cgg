@@ -65,6 +65,8 @@
 4e62e21 - chore: rename package to toby1123yjh and update repo URL
 8546ce9 - feat(mvp1): integrate ccg commands, prompts, agents and config
 6a6edb5 - feat(mvp1): add trellis-ccg content installation logic
+3626dc5 - docs: add MVP1 completion report
+78c4ef9 - docs: add codeagent-wrapper setup guide and download script
 ```
 
 ---
@@ -72,11 +74,12 @@
 ## 未完成项（后续 TODO）
 
 ### 1. codeagent-wrapper 二进制
-**问题**: 没有 Go 环境，无法编译 codeagent-wrapper
-**解决方案**（三选一）:
-- A. 从 ccg release 下载预编译好的二进制
-- B. 你自己编译后放到 `packages/cli/bin/`
-- C. 修改安装逻辑，安装时从网络下载
+**状态**: 已文档化 ✅
+**解决方案**: 
+- ✅ 创建了 `docs/CODEAGENT-WRAPPER-SETUP.md` 详细说明 3 种安装方法
+- ✅ 创建了 `scripts/download-wrapper.js` 下载脚本（未来可用）
+- ✅ 说明 wrapper 是可选的（只有多模型命令需要）
+- ⏸️ 用户需要自己编译（需要 Go 环境）或等待未来 release
 
 ### 2. 本地测试
 - 在测试项目运行 `trellis-ccg init`
