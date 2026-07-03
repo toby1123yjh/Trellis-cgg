@@ -1,13 +1,13 @@
 {
-  "name": "@mindfoldhq/trellis",
+  "name": "toby1123yjh",
   "version": "0.6.5",
-  "description": "AI capabilities grow like ivy — Trellis provides the structure to guide them along a disciplined path",
+  "description": "Trellis + CCG fusion: AI workflow with multi-model capabilities and quality gates",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "trellis": "./bin/trellis.js",
-    "tl": "./bin/trellis.js"
+    "trellis-ccg": "./bin/trellis.js",
+    "tccg": "./bin/trellis.js"
   },
   "publishConfig": {
     "access": "public"
@@ -85,6 +85,6 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/mindfold-ai/trellis.git"
+    "url": "https://github.com/toby1123yjh/Trellis-cgg.git"
   }
 }
