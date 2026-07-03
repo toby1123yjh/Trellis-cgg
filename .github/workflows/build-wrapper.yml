@@ -22,8 +22,7 @@ jobs:
 
       - name: Clone ccg-workflow
         run: |
-          git clone https://github.com/your-org/ccg-workflow.git /tmp/ccg-workflow
-          # 如果是私有仓库，需要配置 token
+          git clone https://github.com/fengshao1227/ccg-workflow.git /tmp/ccg-workflow
 
       - name: Build all platforms
         run: |
