@@ -18,7 +18,10 @@ import {
 } from "../types/ai-tools.js";
 
 // Platform configurators
-import { configureClaude } from "./claude.js";
+import {
+  collectTrellisCcgLiteTemplates,
+  configureClaude,
+} from "./claude.js";
 import { configureCursor } from "./cursor.js";
 import { configureOpenCode, collectOpenCodeTemplates } from "./opencode.js";
 import { configureCodex } from "./codex.js";
@@ -185,6 +188,9 @@ const PLATFORM_FUNCTIONS: Record<AITool, PlatformFunctions> = {
         `.claude/${settings.targetPath}`,
         resolvePlaceholders(settings.content),
       );
+      for (const [filePath, content] of collectTrellisCcgLiteTemplates()) {
+        files.set(filePath, content);
+      }
       return files;
     },
   },
@@ -234,7 +240,8 @@ const PLATFORM_FUNCTIONS: Record<AITool, PlatformFunctions> = {
       for (const hook of getCodexHooks()) {
         files.set(`.codex/hooks/${hook.name}`, hook.content);
       }
-      // Shared hooks (inject-workflow-state.py only) — mirror configureCodex
+      // Shared hooks (workflow-state + native SubagentStart context) — mirror
+      // configureCodex; agent profiles retain the older pull-based fallback.
       for (const [k, v] of collectSharedHooks(".codex/hooks", "codex")) {
         files.set(k, v);
       }

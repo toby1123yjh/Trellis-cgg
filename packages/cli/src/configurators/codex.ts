@@ -81,8 +81,9 @@ export async function configureCodex(cwd: string): Promise<void> {
     );
   }
 
-  // Shared hooks (inject-workflow-state.py only). Sub-agent context is
-  // pull-based (class-2).
+  // Shared hooks include the main-session breadcrumb and, on Codex versions
+  // that expose SubagentStart, native sub-agent context. Agent profiles still
+  // carry the pull-based fallback for older Codex runtimes.
   await writeSharedHooks(hooksDir, "codex");
 
   // Hooks config → .codex/hooks.json

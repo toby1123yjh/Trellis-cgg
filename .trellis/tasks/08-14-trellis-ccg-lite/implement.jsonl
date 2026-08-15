@@ -1,0 +1,6 @@
+{"file":".trellis/spec/cli/backend/index.md","reason":"CLI backend pre-development checklist and package conventions."}
+{"file":".trellis/spec/cli/backend/quality-guidelines.md","reason":"TypeScript quality rules for the Claude configurator change."}
+{"file":".trellis/spec/cli/backend/configurator-shared.md","reason":"Configurator boundaries, template writing, and cross-platform expectations."}
+{"file":".trellis/spec/cli/unit-test/index.md","reason":"CLI test layer entry point and required validation."}
+{"file":".trellis/spec/cli/unit-test/conventions.md","reason":"Vitest structure, isolation, and assertion conventions."}
+{"file":".trellis/spec/cli/unit-test/integration-patterns.md","reason":"Temporary-directory configuration and init integration patterns."}

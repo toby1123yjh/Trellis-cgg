@@ -339,8 +339,14 @@ describe("collectPlatformTemplates", () => {
       if (result) {
         const managedPaths = getPlatformManagedPaths(id);
         for (const [filePath] of result) {
+          // Trellis CCG Lite is deliberately project-scoped rather than
+          // platform-scoped. Its control-plane files live under .trellis so
+          // Claude Code can run the same extension from any supported host.
+          const isTrellisCcgLitePath =
+            id === "claude-code" &&
+            filePath.startsWith(".trellis/extensions/trellis-ccg-lite/");
           expect(
-            managedPaths.some(
+            isTrellisCcgLitePath || managedPaths.some(
               (managedPath) =>
                 filePath === managedPath ||
                 filePath.startsWith(managedPath + "/"),

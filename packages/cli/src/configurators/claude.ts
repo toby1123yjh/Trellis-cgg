@@ -34,29 +34,6 @@ function shouldExclude(filename: string): boolean {
 }
 
 /**
- * Recursively copy directory, filtering out excluded files
- */
-async function copyDirFiltered(source: string, dest: string): Promise<void> {
-  if (!existsSync(source)) return;
-
-  ensureDir(dest);
-
-  for (const entry of readdirSync(source, { withFileTypes: true })) {
-    if (shouldExclude(entry.name)) continue;
-
-    const srcPath = path.join(source, entry.name);
-    const destPath = path.join(dest, entry.name);
-
-    if (entry.isDirectory()) {
-      await copyDirFiltered(srcPath, destPath);
-    } else if (entry.isFile()) {
-      const content = readFileSync(srcPath, "utf-8");
-      await writeFile(destPath, content);
-    }
-  }
-}
-
-/**
  * Inject the opt-in `statusLine` block into the settings.json template.
  * Runs BEFORE resolvePlaceholders so `{{PYTHON_CMD}}` resolves through the
  * normal path. The flag-off path never calls this — default output stays
@@ -85,22 +62,32 @@ function injectStatusLine(content: string): string {
 async function copyDirFiltered(
   src: string,
   dest: string,
-  skipDirs: string[] = [],
+  skipPaths: string[] = [],
   withStatusline = false,
+  sourceRoot = src,
 ): Promise<void> {
+  if (!existsSync(src)) return;
+
   ensureDir(dest);
 
   for (const entry of readdirSync(src)) {
-    if (shouldExclude(entry) || skipDirs.includes(entry)) {
+    const srcPath = path.join(src, entry);
+    const relativePath = path.relative(sourceRoot, srcPath).split(path.sep).join("/");
+    if (shouldExclude(entry) || skipPaths.includes(relativePath)) {
       continue;
     }
 
-    const srcPath = path.join(src, entry);
     const destPath = path.join(dest, entry);
     const stat = statSync(srcPath);
 
     if (stat.isDirectory()) {
-      await copyDirFiltered(srcPath, destPath);
+      await copyDirFiltered(
+        srcPath,
+        destPath,
+        skipPaths,
+        withStatusline,
+        sourceRoot,
+      );
     } else {
       let content = readFileSync(srcPath, "utf-8");
       if (entry === "settings.json") {
@@ -136,7 +123,7 @@ export async function configureClaude(
   await copyDirFiltered(
     sourcePath,
     destPath,
-    ["commands", "hooks"],
+    ["commands", "hooks", "agents/trellis-ccg"],
     withStatusline,
   );
 
@@ -166,50 +153,66 @@ export async function configureClaude(
     resolveBundledSkills(ctx),
   );
 
-  // trellis-ccg: install ccg commands, agents, and prompts
-  await installTrellisCcgContent(cwd, destPath);
+  // Trellis CCG Lite: install the Codex-only command and executor prompt.
+  await installTrellisCcgContent(cwd);
 }
 
-/**
- * Install trellis-ccg content (commands, agents, prompts)
- */
-async function installTrellisCcgContent(
-  cwd: string,
-  destPath: string,
-): Promise<void> {
-  const templatesRoot = getClaudeTemplatePath().replace(/[\/\\]claude$/, "");
+const TRELLIS_CCG_LITE_TEMPLATES = [
+  {
+    source: ["common", "commands", "trellis-ccg", "codex-exec.md"],
+    target: ".claude/commands/trellis-ccg/codex-exec.md",
+  },
+  {
+    source: [
+      "common",
+      "extensions",
+      "trellis-ccg-lite",
+      "manifest.json",
+    ],
+    target: ".trellis/extensions/trellis-ccg-lite/manifest.json",
+  },
+  {
+    source: ["common", "extensions", "trellis-ccg-lite", "command.md"],
+    target: ".trellis/extensions/trellis-ccg-lite/command.md",
+  },
+  {
+    source: ["common", "extensions", "trellis-ccg-lite", "executor.md"],
+    target: ".trellis/extensions/trellis-ccg-lite/executor.md",
+  },
+  {
+    source: ["common", "extensions", "trellis-ccg-lite", "dispatch.py"],
+    target: ".trellis/extensions/trellis-ccg-lite/dispatch.py",
+  },
+  {
+    source: [
+      "common",
+      "extensions",
+      "trellis-ccg-lite",
+      "inject-ccg-lite-result.py",
+    ],
+    target: ".claude/hooks/trellis-ccg-lite-result.py",
+  },
+] as const;
 
-  // 1. Copy trellis-ccg commands to .claude/commands/trellis-ccg/
-  const ccgCommandsSource = path.join(templatesRoot, "common", "commands", "trellis-ccg");
-  const ccgCommandsDest = path.join(destPath, "commands", "trellis-ccg");
-  if (existsSync(ccgCommandsSource) && statSync(ccgCommandsSource).isDirectory()) {
-    await copyDirFiltered(ccgCommandsSource, ccgCommandsDest);
+export function collectTrellisCcgLiteTemplates(): Map<string, string> {
+  const templatesRoot = path.dirname(getClaudeTemplatePath());
+  const files = new Map<string, string>();
+
+  for (const template of TRELLIS_CCG_LITE_TEMPLATES) {
+    const sourcePath = path.join(templatesRoot, ...template.source);
+    const content = replacePythonCommandLiterals(
+      resolvePlaceholders(readFileSync(sourcePath, "utf-8")),
+    );
+    files.set(template.target, content);
   }
 
-  // 2. Copy trellis-ccg agents to .claude/agents/trellis-ccg/
-  const ccgAgentsSource = path.join(templatesRoot, "claude", "agents", "trellis-ccg");
-  const ccgAgentsDest = path.join(destPath, "agents", "trellis-ccg");
-  if (existsSync(ccgAgentsSource) && statSync(ccgAgentsSource).isDirectory()) {
-    await copyDirFiltered(ccgAgentsSource, ccgAgentsDest);
-  }
+  return files;
+}
 
-  // 3. Copy multi-model prompts to home directory (~/.claude/.ccg/prompts/)
-  const homeDir = process.env.HOME || process.env.USERPROFILE || "";
-  if (homeDir) {
-    const globalCcgDir = path.join(homeDir, ".claude", ".ccg", "prompts");
-
-    // Copy codex prompts
-    const codexPromptsSource = path.join(templatesRoot, "common", "prompts", "codex");
-    const codexPromptsDest = path.join(globalCcgDir, "codex");
-    if (existsSync(codexPromptsSource) && statSync(codexPromptsSource).isDirectory()) {
-      await copyDirFiltered(codexPromptsSource, codexPromptsDest);
-    }
-
-    // Copy gemini prompts
-    const geminiPromptsSource = path.join(templatesRoot, "common", "prompts", "gemini");
-    const geminiPromptsDest = path.join(globalCcgDir, "gemini");
-    if (existsSync(geminiPromptsSource) && statSync(geminiPromptsSource).isDirectory()) {
-      await copyDirFiltered(geminiPromptsSource, geminiPromptsDest);
-    }
+async function installTrellisCcgContent(cwd: string): Promise<void> {
+  for (const [relativePath, content] of collectTrellisCcgLiteTemplates()) {
+    const targetPath = path.join(cwd, ...relativePath.split("/"));
+    ensureDir(path.dirname(targetPath));
+    await writeFile(targetPath, content);
   }
 }

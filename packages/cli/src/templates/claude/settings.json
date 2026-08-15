@@ -66,6 +66,15 @@
             "timeout": 15
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{PYTHON_CMD}} .claude/hooks/trellis-ccg-lite-result.py",
+            "timeout": 15
+          }
+        ]
       }
     ]
   },

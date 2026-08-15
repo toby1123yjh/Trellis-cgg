@@ -5196,10 +5196,13 @@ describe("regression: collectTemplates paths match init directory structure (0.3
         k.includes("/commands/"),
       );
       for (const key of commandKeys) {
+        const isLiteClaudeCommand =
+          id === "claude-code" &&
+          key.startsWith(".claude/commands/trellis-ccg/");
         expect(
-          key,
+          isLiteClaudeCommand || key.includes("/commands/trellis/"),
           `${id} command path should include trellis/ subdirectory: ${key}`,
-        ).toContain("/commands/trellis/");
+        ).toBe(true);
       }
     }
   });
@@ -5393,10 +5396,9 @@ describe("regression: cross-platform-thinking-guide dead code removed (0.3.1)", 
 // =============================================================================
 
 describe("regression: class-2 platforms use pull-based sub-agent context", () => {
-  // Class 2: gemini, qoder, codex, copilot — hooks can't reliably inject
-  // sub-agent prompts, so sub-agents Read jsonl/prd themselves.
-  // implement/check get the pull-based prelude; research does not (it
-  // searches the spec tree and has no task-level context dependency).
+  // Gemini, Qoder and Copilot remain pull-only. Codex keeps the pull-based
+  // prelude as a compatibility fallback, but also has a native SubagentStart
+  // hook on newer Codex runtimes.
   const class2 = [
     {
       id: "qoder" as const,
@@ -5419,6 +5421,7 @@ describe("regression: class-2 platforms use pull-based sub-agent context", () =>
     {
       id: "codex" as const,
       hooksDir: ".codex/hooks",
+      nativeSubagentHook: true,
       preludeAgents: [
         ".codex/agents/trellis-implement.toml",
         ".codex/agents/trellis-check.toml",
@@ -5436,7 +5439,13 @@ describe("regression: class-2 platforms use pull-based sub-agent context", () =>
     },
   ];
 
-  for (const { id, hooksDir, preludeAgents, nonPreludeAgents } of class2) {
+  for (const {
+    id,
+    hooksDir,
+    nativeSubagentHook = false,
+    preludeAgents,
+    nonPreludeAgents,
+  } of class2) {
     describe(`[${id}]`, () => {
       let tmpDir: string;
 
@@ -5450,9 +5459,13 @@ describe("regression: class-2 platforms use pull-based sub-agent context", () =>
         fs.rmSync(tmpDir, { recursive: true, force: true });
       });
 
-      it("does NOT install inject-subagent-context.py", () => {
+      it("installs native inject-subagent-context.py only when supported", () => {
         const hooks = fs.readdirSync(path.join(tmpDir, hooksDir));
-        expect(hooks).not.toContain("inject-subagent-context.py");
+        if (nativeSubagentHook) {
+          expect(hooks).toContain("inject-subagent-context.py");
+        } else {
+          expect(hooks).not.toContain("inject-subagent-context.py");
+        }
       });
 
       it("implement/check definitions contain pull-based prelude", () => {
@@ -5495,7 +5508,7 @@ describe("regression: class-2 platforms use pull-based sub-agent context", () =>
         }
       });
 
-      it("hook config does not reference inject-subagent-context.py", () => {
+      it("hook config references native sub-agent context only when supported", () => {
         const configPaths = [
           ".qoder/settings.json",
           ".gemini/settings.json",
@@ -5507,7 +5520,11 @@ describe("regression: class-2 platforms use pull-based sub-agent context", () =>
           const full = path.join(tmpDir, p);
           if (fs.existsSync(full)) {
             const txt = fs.readFileSync(full, "utf-8");
-            expect(txt).not.toContain("inject-subagent-context.py");
+            if (nativeSubagentHook) {
+              expect(txt).toContain("inject-subagent-context.py");
+            } else {
+              expect(txt).not.toContain("inject-subagent-context.py");
+            }
           }
         }
       });

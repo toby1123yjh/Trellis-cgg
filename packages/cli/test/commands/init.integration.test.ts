@@ -178,6 +178,24 @@ describe("init() integration", () => {
         path.join(tmpDir, ".claude", "skills", "trellis-meta", "SKILL.md"),
       ),
     ).toBe(true);
+    expect(
+      fs.readdirSync(
+        path.join(tmpDir, ".claude", "commands", "trellis-ccg"),
+      ),
+    ).toEqual(["codex-exec.md"]);
+    expect(
+      fs.readdirSync(
+        path.join(tmpDir, ".trellis", "extensions", "trellis-ccg-lite"),
+      ),
+    ).toEqual(["command.md", "dispatch.py", "executor.md", "manifest.json"]);
+    expect(
+      fs.existsSync(
+        path.join(tmpDir, ".claude", "hooks", "trellis-ccg-lite-result.py"),
+      ),
+    ).toBe(true);
+    expect(
+      fs.existsSync(path.join(tmpDir, ".claude", "agents", "trellis-ccg")),
+    ).toBe(false);
   });
 
   it("#3 multi platform creates all selected platform directories", async () => {

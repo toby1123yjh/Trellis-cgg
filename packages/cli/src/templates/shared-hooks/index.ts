@@ -86,7 +86,9 @@ export const SHARED_HOOKS_BY_PLATFORM: Record<
     "inject-shell-session-context.py",
     "inject-subagent-context.py",
   ],
-  codex: ["inject-workflow-state.py"],
+  // Codex 0.129+ exposes SubagentStart; keep the native context path in
+  // addition to the pull-based agent-profile fallback for older runtimes.
+  codex: ["inject-workflow-state.py", "inject-subagent-context.py"],
   gemini: ["session-start.py", "inject-workflow-state.py"],
   qoder: ["session-start.py", "inject-workflow-state.py"],
   copilot: ["inject-workflow-state.py"],

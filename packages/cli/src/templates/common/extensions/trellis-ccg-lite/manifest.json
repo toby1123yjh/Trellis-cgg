@@ -1,0 +1,11 @@
+{
+  "id": "trellis-ccg-lite",
+  "version": 1,
+  "executor": "codex",
+  "wrapper_args": ["--lite", "--progress", "--backend", "codex"],
+  "max_correction_rounds": 2,
+  "command": "command.md",
+  "role_file": "executor.md",
+  "dispatcher": "dispatch.py",
+  "runtime_dir": ".trellis/.runtime/trellis-ccg-lite"
+}

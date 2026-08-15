@@ -11,16 +11,21 @@ CodeBuddy / Droid / Codex / Copilot wiring), but Gemini CLI 0.40.x renamed
 its per-turn event to ``BeforeAgent`` and its schema validator rejects the
 legacy name. ``_detect_platform`` picks the right value at runtime.
 Breadcrumb text is pulled exclusively from workflow.md
-[workflow-state:STATUS] tag blocks — workflow.md is the single source of
+[workflow-state:STATUS] tag blocks 鈥?workflow.md is the single source of
 truth. There are no fallback dicts in this script: when workflow.md is
 missing or a tag is absent, the breadcrumb degrades to a generic
 "Refer to workflow.md for current step." line so users see (and fix)
 the broken state instead of the hook silently masking it.
 
-Shared across all hook-capable platforms (Claude, Cursor, Codex, Qoder,
-CodeBuddy, Droid, Gemini, Copilot). Kiro is not wired (no per-turn
-hook entry point). Written to each platform's hooks directory via
-writeSharedHooks() at init time.
+Which platforms register this hook is decided by SHARED_HOOKS_BY_PLATFORM
+in templates/shared-hooks/index.ts 鈥?currently Claude, Codex, Gemini,
+Qoder, Copilot, CodeBuddy, Droid, Kiro, Trae and ZCode. That table is the
+source of truth; each listed platform's collect<Platform>Templates() pulls
+this file into its template map through collectSharedHooks(), and a single
+writer puts that map on disk at init time. Kiro wires this via the CLI
+custom agent's ``hooks.userPromptSubmit`` and the IDE ``.kiro.hook``
+``promptSubmit`` event; its output branch emits a plain-text breadcrumb
+(Kiro adds hook stdout directly to the conversation context).
 
 Silent exit 0 cases (no output):
   - No .trellis/ directory found (not a Trellis project)
@@ -32,10 +37,12 @@ import json
 import os
 import re
 import sys
+import queue
+import threading
 from pathlib import Path
 
 # Force UTF-8 on stdin/stdout/stderr on Windows. Default codepage there is
-# cp936 / cp1252 / etc. — non-ASCII content (Chinese task names, prd snippets)
+# cp936 / cp1252 / etc. 鈥?non-ASCII content (Chinese task names, prd snippets)
 # both in stdin (hook payload from host CLI) and stdout (our emitted blocks)
 # raises UnicodeDecodeError / UnicodeEncodeError. Equivalent to `python -X utf8`
 # but applied per-stream so we don't depend on host CLI's command wiring.
@@ -49,12 +56,12 @@ if sys.platform.startswith("win"):
             try:
                 _stream.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
             except Exception:
-                pass
+                pass  # Optional Windows stream setup; keep hook startup non-fatal.
         elif hasattr(_stream, "detach"):
             try:
                 setattr(sys, _stream_name, _io.TextIOWrapper(_stream.detach(), encoding="utf-8", errors="replace"))
             except Exception:
-                pass
+                pass  # Optional Windows stream setup; keep hook startup non-fatal.
 from typing import Optional
 
 
@@ -91,8 +98,16 @@ def find_trellis_root(start: Path) -> Optional[Path]:
 def _detect_platform(input_data: dict) -> str | None:
     if isinstance(input_data.get("cursor_version"), str):
         return "cursor"
+    # CLAUDE_PROJECT_DIR is a compatibility alias that several hosts set
+    # alongside their own variable 鈥?CodeBuddy, ZCode and Trae all do. It must
+    # therefore be checked LAST, or every one of them is detected as claude and
+    # the context key becomes `claude_<their-session-id>`. That key does not
+    # match the session file `task.py start` wrote under the host's real name,
+    # so every turn reports no_task while the pointer exists on disk.
+    # Observed on CodeBuddy IDE 4.10.4: session file `codebuddy_ae54840e鈥?json`
+    # alongside marker `update-check-claude_ae54840e鈥?marker`, same id.
     env_map = {
-        "CLAUDE_PROJECT_DIR": "claude",
+        "ZCODE_PROJECT_DIR": "zcode",
         "CURSOR_PROJECT_DIR": "cursor",
         "CODEBUDDY_PROJECT_DIR": "codebuddy",
         "FACTORY_PROJECT_DIR": "droid",
@@ -100,6 +115,9 @@ def _detect_platform(input_data: dict) -> str | None:
         "QODER_PROJECT_DIR": "qoder",
         "KIRO_PROJECT_DIR": "kiro",
         "COPILOT_PROJECT_DIR": "copilot",
+        "TRAE_PROJECT_DIR": "trae",
+        # Last: the shared alias, only meaningful once no vendor key matched.
+        "CLAUDE_PROJECT_DIR": "claude",
     }
     for env_name, platform in env_map.items():
         if os.environ.get(env_name):
@@ -121,6 +139,10 @@ def _detect_platform(input_data: dict) -> str | None:
         return "droid"
     if ".kiro" in script_parts:
         return "kiro"
+    if ".trae" in script_parts:
+        return "trae"
+    if ".zcode" in script_parts:
+        return "zcode"
     return None
 
 
@@ -175,7 +197,7 @@ def load_breadcrumbs(root: Path) -> dict[str, str]:
     """Parse workflow.md for [workflow-state:STATUS] blocks.
 
     Returns {status: body_text}. workflow.md is the single source of
-    truth — there are no fallback dicts in this script. Missing tags
+    truth 鈥?there are no fallback dicts in this script. Missing tags
     (or a missing/unreadable workflow.md) fall back to a generic line
     in build_breadcrumb so users see the broken state and fix
     workflow.md, rather than the hook silently masking the issue.
@@ -216,28 +238,82 @@ def _read_trellis_config(root: Path) -> dict:
         return {}
 
 
+DEFAULT_PROMPT_INJECTION_SKIP_KEYWORD = "no-trellis"
+
+
+def _resolve_skip_keyword(config: dict) -> str:
+    """Read `prompt_injection.skip_keyword` from parsed .trellis/config.yaml.
+
+    Mirrors `common.config.get_prompt_injection_config()`. Defaults to
+    "no-trellis"; "" disables the escape hatch entirely. A non-string value
+    falls back to the default.
+    """
+    if isinstance(config, dict):
+        section = config.get("prompt_injection")
+        if isinstance(section, dict):
+            raw = section.get("skip_keyword", DEFAULT_PROMPT_INJECTION_SKIP_KEYWORD)
+            if isinstance(raw, str):
+                return raw
+    return DEFAULT_PROMPT_INJECTION_SKIP_KEYWORD
+
+
+def prompt_has_skip_keyword(prompt: str, keyword: str) -> bool:
+    """Case-insensitive, word-boundary match of `keyword` in `prompt`.
+
+    Hyphen counts as a word char so "no-trellisx" / "xno-trellis" /
+    "foo-no-trellis" don't match, but punctuation/whitespace boundaries do.
+    Empty keyword never matches (disables the escape hatch).
+    """
+    if not keyword or not isinstance(prompt, str):
+        return False
+    pattern = r"(?<![\w-])" + re.escape(keyword) + r"(?![\w-])"
+    return re.search(pattern, prompt, re.IGNORECASE) is not None
+
+
+def _resolve_codex_dispatch_mode(config: dict) -> str:
+    """Normalize `codex.dispatch_mode` from .trellis/config.yaml to "auto" or "inline".
+
+    Defaults to `auto`. The legacy `sub-agent` value is an alias for `auto`.
+    Any other explicit value (including invalid ones) falls back to `inline`
+    without per-turn warnings. Shared by `_codex_mode_banner` (the per-turn
+    banner) and `resolve_breadcrumb_key` (the breadcrumb tag key) so the two
+    stay in lockstep.
+    """
+    mode = "auto"
+    if isinstance(config, dict):
+        codex_cfg = config.get("codex")
+        if isinstance(codex_cfg, dict):
+            cfg_mode = str(codex_cfg.get("dispatch_mode", mode)).strip().lower()
+            if cfg_mode == "inline":
+                mode = "inline"
+            elif cfg_mode in ("auto", "sub-agent"):
+                mode = "auto"
+            else:
+                mode = "inline"
+    return mode
+
+
 def _codex_mode_banner(config: dict) -> str:
     """Emit a `<codex-mode>` banner for the additionalContext payload.
 
     Reads `codex.dispatch_mode` from .trellis/config.yaml; defaults to
-    `inline` when missing or invalid because Codex sub-agents run with
-    `fork_turns="none"` isolation and can't inherit the parent session's
-    task context. The banner makes the active mode explicit to Codex AI
-    per turn, complementing the workflow-state body which is per-status.
-    Mode tells AI which dispatch protocol to follow; workflow-state tells
-    AI what step it's at.
+    `auto`, which dispatches Trellis sub-agents using native Codex context
+    injection with a child-side fallback. This does not rely on inherited
+    parent transcripts: `fork_turns` remains caller-controlled, and
+    fresh-history sub-agents still receive their explicit delegated task and
+    inherited session configuration. `inline` is an explicit opt-out; the
+    legacy `sub-agent` value is an alias for `auto`. Invalid explicit values
+    fall back to `inline` without per-turn warnings. The banner makes the
+    active mode explicit to Codex AI per turn, complementing the workflow-state
+    body which is per-status. Mode tells AI which dispatch protocol to follow;
+    workflow-state tells AI what step it's at.
     """
-    mode = "inline"
-    if isinstance(config, dict):
-        codex_cfg = config.get("codex")
-        if isinstance(codex_cfg, dict):
-            cfg_mode = codex_cfg.get("dispatch_mode")
-            if cfg_mode in ("inline", "sub-agent"):
-                mode = cfg_mode
-    if mode == "sub-agent":
+    mode = _resolve_codex_dispatch_mode(config)
+    if mode == "auto":
         meaning = (
-            "sub-agent: implement/check work defaults to Trellis sub-agents; "
-            "the main session still coordinates, clarifies, updates specs, commits, and finishes."
+            "auto: implement/check work defaults to Trellis sub-agents; native Codex "
+            "context injection is preferred and child-side loading is the fallback. "
+            "The main session still coordinates, clarifies, updates specs, commits, and finishes."
         )
     else:
         meaning = (
@@ -252,22 +328,17 @@ def resolve_breadcrumb_key(
 ) -> str:
     """Pick the breadcrumb tag key based on Codex dispatch_mode.
 
-    Codex defaults to ``inline`` because sub-agents run with ``fork_turns="none"``
-    isolation and can't inherit the parent session's task context. Users can
-    opt into ``codex.dispatch_mode: sub-agent`` in ``.trellis/config.yaml``
-    to use the parallel ``<status>-inline`` tag → ``<status>`` flip. Invalid
-    or missing values fall back to inline.
+    Codex defaults to ``auto`` and therefore uses the ordinary ``<status>``
+    breadcrumb for native SubagentStart dispatch with child-side fallback;
+    it does not depend on an inherited parent transcript. ``inline`` selects
+    the parallel ``<status>-inline`` tag; ``sub-agent`` remains an alias for
+    ``auto``. Invalid explicit values fall back to inline without per-turn
+    warnings.
 
     Non-codex platforms return the plain status unchanged.
     """
     if platform == "codex":
-        mode = "inline"
-        if isinstance(config, dict):
-            codex_cfg = config.get("codex")
-            if isinstance(codex_cfg, dict):
-                cfg_mode = codex_cfg.get("dispatch_mode")
-                if cfg_mode in ("inline", "sub-agent"):
-                    mode = cfg_mode
+        mode = _resolve_codex_dispatch_mode(config)
         return f"{status}-inline" if mode == "inline" else status
     return status
 
@@ -281,10 +352,10 @@ def build_breadcrumb(
 ) -> str:
     """Build the <workflow-state>...</workflow-state> block.
 
-    - Known status (tag present in workflow.md) → detailed template body
-    - Unknown status (no tag, or workflow.md missing) → generic
+    - Known status (tag present in workflow.md) 鈫?detailed template body
+    - Unknown status (no tag, or workflow.md missing) 鈫?generic
       "Refer to workflow.md for current step." line
-    - `no_task` pseudo-status (task_id is None) → header omits task info
+    - `no_task` pseudo-status (task_id is None) 鈫?header omits task info
     """
     lookup_key = breadcrumb_key or status
     body = templates.get(lookup_key)
@@ -300,14 +371,44 @@ def build_breadcrumb(
 # Entry
 # ---------------------------------------------------------------------------
 
+def _load_hook_input() -> dict:
+    """Read hook JSON without trusting host runners to close stdin.
+
+    Kiro IDE `runCommand` and similar hook runners can leave stdin open while
+    sending no payload. A plain `json.load(sys.stdin)` then blocks forever.
+    Normal hook runners write the complete JSON payload and close stdin, so the
+    short daemon read preserves that path while failing closed to `{}` for
+    non-piping hosts.
+    """
+    result_queue: "queue.Queue[str | Exception]" = queue.Queue(maxsize=1)
+
+    def _read() -> None:
+        try:
+            result_queue.put(sys.stdin.read())
+        except Exception as exc:
+            result_queue.put(exc)
+
+    reader = threading.Thread(target=_read, daemon=True)
+    reader.start()
+    try:
+        raw = result_queue.get(timeout=0.2)
+    except queue.Empty:
+        return {}
+
+    if isinstance(raw, Exception):
+        return {}
+    try:
+        data = json.loads(raw) if raw.strip() else {}
+    except (json.JSONDecodeError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
 def main() -> int:
     if os.environ.get("TRELLIS_HOOKS") == "0" or os.environ.get("TRELLIS_DISABLE_HOOKS") == "1":
         return 0
 
-    try:
-        data = json.load(sys.stdin)
-    except (json.JSONDecodeError, ValueError):
-        data = {}
+    data = _load_hook_input()
 
     cwd_str = data.get("cwd") or os.getcwd()
     cwd = Path(cwd_str)
@@ -316,12 +417,15 @@ def main() -> int:
     if root is None:
         return 0  # not a Trellis project
 
+    config = _read_trellis_config(root)
+    if prompt_has_skip_keyword(data.get("prompt", ""), _resolve_skip_keyword(config)):
+        return 0  # user opted out of the per-turn breadcrumb for this turn
+
     templates = load_breadcrumbs(root)
     platform = _detect_platform(data)
-    config = _read_trellis_config(root)
     task = get_active_task(root, data)
     if task is None:
-        # No active task — still emit a breadcrumb nudging AI toward
+        # No active task 鈥?still emit a breadcrumb nudging AI toward
         # trellis-brainstorm + task.py create when user describes real work.
         no_task_key = resolve_breadcrumb_key("no_task", platform, config)
         breadcrumb = build_breadcrumb(
@@ -342,7 +446,15 @@ def main() -> int:
         parts.append(breadcrumb)
         breadcrumb = "\n\n".join(parts)
 
-    # Gemini CLI 0.40.x rejects "UserPromptSubmit" — its per-turn event is
+    # Kiro (CLI userPromptSubmit / IDE promptSubmit) adds a hook's stdout
+    # directly to the conversation context 鈥?no JSON envelope. Emit the bare
+    # breadcrumb text. Conditionally isolated: all other platforms keep the
+    # hookSpecificOutput JSON path below unchanged.
+    if platform == "kiro":
+        print(breadcrumb)
+        return 0
+
+    # Gemini CLI 0.40.x rejects "UserPromptSubmit" 鈥?its per-turn event is
     # named "BeforeAgent". Other platforms (Claude/Cursor/Qoder/CodeBuddy/
     # Droid/Codex/Copilot) accept the original Claude-style name.
     hook_event_name = (

@@ -110,35 +110,12 @@ channel:
 #   dispatch_mode: inline  # or "sub-agent" to dispatch trellis-* sub-agents
 
 #-------------------------------------------------------------------------------
-# trellis-ccg Configuration
+# Trellis CCG Lite
 #-------------------------------------------------------------------------------
-# Multi-model and Agent Teams configuration for trellis-ccg commands.
-#
+# Codex is the fixed implementation executor. Trellis remains responsible for
+# task artifacts, specs, lifecycle state, and result verification.
 trellis-ccg:
-  # Path to codeagent-wrapper binary (multi-model bridge)
   wrapper_path: ~/.claude/bin/codeagent-wrapper
-  
-  # team 系列命令的多模型配置
-  team:
-    # 后端权威模型（team-plan / team-review 的后端分析）
-    # 可选值: codex, gemini, claude（本地模型）
-    # 设为 null 则不使用后端模型（仅前端模型）
-    backend_primary: codex
-    
-    # 前端权威模型（team-plan / team-review 的前端分析）
-    # 可选值: gemini, codex, claude
-    # 设为 null 则不使用前端模型（仅后端模型）
-    frontend_primary: gemini
-    
-    # 如果只想用一个模型（不做双模型并行），两个都设为同一个值：
-    # backend_primary: codex
-    # frontend_primary: codex
-  
-  # 未来的多模型配置（MVP2）
-  # multimodel:
-  #   research:
-  #     enabled: false
-  #     backends: [codex, gemini]
-  #   review:
-  #     enabled: false
-  #     backends: [codex, gemini]
+  executor: codex
+  lite_mode: true
+  max_correction_rounds: 2

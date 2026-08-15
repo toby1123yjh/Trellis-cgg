@@ -810,6 +810,96 @@ describe("configurePlatform", () => {
     expect(fs.existsSync(path.join(tmpDir, ".claude", "commands"))).toBe(true);
   });
 
+  it("claude-code installs only the Codex-first Trellis CCG Lite surface", async () => {
+    await configurePlatform("claude-code", tmpDir);
+
+    // Lite narrows only the CCG integration surface. The normal Trellis
+    // Claude lifecycle hooks remain installed and wired by settings.json.
+    const hooksDir = path.join(tmpDir, ".claude", "hooks");
+    expect(fs.readdirSync(hooksDir).sort()).toEqual([
+      "inject-subagent-context.py",
+      "inject-workflow-state.py",
+      "session-start.py",
+      "trellis-ccg-lite-result.py",
+    ]);
+    const claudeSettings = JSON.parse(
+      fs.readFileSync(path.join(tmpDir, ".claude", "settings.json"), "utf-8"),
+    ) as {
+      hooks?: Record<string, { hooks?: { command?: string }[] }[]>;
+    };
+    expect(claudeSettings.hooks?.SessionStart?.[0]?.hooks?.[0]?.command).toContain(
+      ".claude/hooks/session-start.py",
+    );
+    expect(claudeSettings.hooks?.UserPromptSubmit?.[0]?.hooks?.[0]?.command).toContain(
+      ".claude/hooks/inject-workflow-state.py",
+    );
+    expect(claudeSettings.hooks?.UserPromptSubmit?.[1]?.hooks?.[0]?.command).toContain(
+      ".claude/hooks/trellis-ccg-lite-result.py",
+    );
+    expect(claudeSettings.hooks?.PreToolUse?.[0]?.hooks?.[0]?.command).toContain(
+      ".claude/hooks/inject-subagent-context.py",
+    );
+
+    const commandDir = path.join(
+      tmpDir,
+      ".claude",
+      "commands",
+      "trellis-ccg",
+    );
+    const commandPath = path.join(commandDir, "codex-exec.md");
+    const extensionDir = path.join(
+      tmpDir,
+      ".trellis",
+      "extensions",
+      "trellis-ccg-lite",
+    );
+
+    expect(fs.readdirSync(commandDir).sort()).toEqual(["codex-exec.md"]);
+    expect(fs.readdirSync(extensionDir).sort()).toEqual([
+      "command.md",
+      "dispatch.py",
+      "executor.md",
+      "manifest.json",
+    ]);
+    expect(
+      fs.existsSync(path.join(tmpDir, ".claude", "agents", "trellis-ccg")),
+    ).toBe(false);
+
+    const command = fs.readFileSync(commandPath, "utf-8");
+    const extensionFiles = ["command.md", "dispatch.py", "executor.md", "manifest.json"];
+    const extensionSurface = extensionFiles
+      .map((name) => fs.readFileSync(path.join(extensionDir, name), "utf-8"))
+      .join("\n");
+    const installedLiteSurface = `${command}\n${extensionSurface}`;
+
+    expect(extensionSurface).toContain("--lite --progress --backend codex");
+    expect(extensionSurface).toContain("codeagent-wrapper");
+    expect(extensionSurface).toContain("resume");
+    expect(installedLiteSurface).toContain("task.py current --source");
+    expect(installedLiteSurface).toContain("task.json");
+    expect(extensionSurface).toContain("--correction-round <1-or-2>");
+    expect(extensionSurface).toContain("two-round correction limit");
+    expect(extensionSurface).toContain("implement.jsonl");
+    expect(extensionSurface).toContain("## VERIFICATION_RESULTS");
+    expect(installedLiteSurface).not.toMatch(/\{\{[^}]+\}\}/u);
+    expect(installedLiteSurface).not.toContain("Gemini");
+    expect(installedLiteSurface).not.toContain("Agent Teams");
+    expect(installedLiteSurface).not.toContain("multi-model");
+
+    const trackedTemplates = collectPlatformTemplates("claude-code");
+    expect(trackedTemplates?.get(".claude/commands/trellis-ccg/codex-exec.md")).toBe(
+      command,
+    );
+    for (const name of extensionFiles) {
+      expect(
+        trackedTemplates?.get(`.trellis/extensions/trellis-ccg-lite/${name}`),
+      ).toBe(fs.readFileSync(path.join(extensionDir, name), "utf-8"));
+    }
+    expect(
+      trackedTemplates?.get(".claude/hooks/trellis-ccg-lite-result.py"),
+    ).toBe(fs.readFileSync(path.join(hooksDir, "trellis-ccg-lite-result.py"), "utf-8"));
+  });
+
   it("claude-code configuration includes settings.json", async () => {
     await configurePlatform("claude-code", tmpDir);
     const settingsPath = path.join(tmpDir, ".claude", "settings.json");
@@ -1144,6 +1234,9 @@ describe("configurePlatform", () => {
     const rawTemplate = getCodexHooksConfig();
     expect(rawTemplate).toContain(
       "{{PYTHON_CMD}} -X utf8 .codex/hooks/inject-workflow-state.py",
+    );
+    expect(rawTemplate).toContain(
+      "{{PYTHON_CMD}} -X utf8 .codex/hooks/inject-subagent-context.py",
     );
   });
 

@@ -54,10 +54,11 @@ describe("shared-hooks capability table", () => {
     }
   });
 
-  it("inject-subagent-context.py is restricted to class-1 push-based platforms", () => {
-    // Class-2 (pull-based) platforms load context via agent-definition prelude,
-    // not a hook-mutated prompt.
-    const class2 = new Set(["codex", "copilot", "gemini", "qoder", "trae"]);
+  it("inject-subagent-context.py is installed for native sub-agent hook platforms", () => {
+    // Codex has a native SubagentStart additionalContext hook. The remaining
+    // class-2 platforms still load context through their agent-definition
+    // prelude because they cannot mutate sub-agent prompts.
+    const class2 = new Set(["copilot", "gemini", "qoder", "trae"]);
     for (const [platform, hooks] of Object.entries(
       SHARED_HOOKS_BY_PLATFORM,
     )) {
