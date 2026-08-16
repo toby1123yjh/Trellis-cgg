@@ -7,6 +7,9 @@
 # Session/window scoped runtime state
 .runtime/
 
+# Project-local external executables (for example Trellis CCG Lite's wrapper)
+bin/
+
 # Ralph Loop state file
 .ralph-state.json
 

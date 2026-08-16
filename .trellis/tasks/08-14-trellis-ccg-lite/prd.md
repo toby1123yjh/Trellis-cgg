@@ -74,6 +74,27 @@ Installed Lite templates must contain no unresolved CCG placeholders such as
 configuration must describe Codex as the fixed executor rather than advertise
 multi-model routing.
 
+### R8. Support zero-clone npm initialization
+
+The Lite CLI must be packaged as the public npm package `trellis-ccg-lite`
+with a same-named executable so a user can initialize the current repository
+without cloning or building this source tree:
+
+```bash
+npx trellis-ccg-lite init --claude -u <name>
+```
+
+The package tarball must contain the built CLI, Lite templates, npm-facing
+README, and license. Packaging and publishing must work on Windows and Unix;
+package preparation must not rely on shell-specific commands such as `cp`.
+
+### R9. Keep Lite publication isolated from upstream Trellis
+
+The Lite release path must publish only `trellis-ccg-lite`. It must consume the
+already-published exact-version `@mindfoldhq/trellis-core` dependency and must
+not publish or mutate the upstream core package. Local validation may build and
+pack, but npm publication remains an explicit maintainer action in CI.
+
 ## Constraints
 
 - Do not modify the standalone `Trellis` repository or its
@@ -100,10 +121,18 @@ multi-model routing.
       unresolved `{{...}}` placeholders.
 - [x] Focused configurator tests, CLI typecheck, lint, build, and a temporary
       init/configuration smoke test pass.
+- [x] `packages/cli` packs as `trellis-ccg-lite` with a same-named executable,
+      README, license, and all Lite templates.
+- [x] Installing the generated tarball through `npx` in a clean temporary
+      repository successfully handles `init --claude` and writes the expected
+      project-local Lite assets.
+- [x] Repository scripts resolve the renamed CLI workspace package.
+- [x] A dedicated, manually triggered Lite workflow can publish only the CLI
+      package after confirming the exact core dependency already exists.
 
 ## Out of Scope
 
-- Publishing a new npm version or changing package names/binary aliases.
+- Actually publishing a new npm version from this development session.
 - Migrating or deleting legacy artifacts in an already-initialized user repo.
 - Bundling the Go wrapper or defining its upstream release channel.
 - Adding standalone planning, review, debug, or team commands.

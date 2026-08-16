@@ -36,6 +36,30 @@
 <img src="assets/trellis-demo.gif" alt="Trellis workflow demo" width="100%">
 </p>
 
+## Trellis CCG Lite (this branch)
+
+The `trellis-ccg-lite` branch is the minimal Codex-execution variant of this
+fork. Claude Code/Trellis owns planning, task state, documentation, hooks,
+verification, and finish-work; Codex is the only implementation executor and
+is always launched through:
+
+```text
+codeagent-wrapper --lite --progress --backend codex
+```
+
+Initialize the current repository without cloning this source tree:
+
+```bash
+npx trellis-ccg-lite init --claude -u your-name
+```
+
+The npm badges and general Quick Start below still describe upstream Trellis;
+the command above is the Lite package. If npm returns `E404`, the maintainer
+has not published this branch's package version yet, and the source-build
+fallback in the Lite guide can be used. See the
+[Lite installation and workflow guide](./docs/trellis-ccg-lite.md) and the
+[wrapper setup guide](./docs/CODEAGENT-WRAPPER-SETUP.md).
+
 ## Why Trellis?
 
 | Capability | What it changes |

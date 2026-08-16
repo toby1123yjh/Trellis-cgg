@@ -1,113 +1,99 @@
-# codeagent-wrapper 安装说明
+# Trellis CCG Lite：codeagent-wrapper 安装说明
 
-## 什么是 codeagent-wrapper？
+Trellis CCG Lite 只使用 Codex 作为代码执行者。Claude/Trellis 负责规划、任务状态、
+hooks、验证和收尾，dispatcher 始终使用下面的固定命令调用 wrapper：
 
-`codeagent-wrapper` 是一个多模型桥接二进制程序，让 trellis-ccg 能够调用 Codex、Gemini 等外部模型进行并行分析、审查和调试。
+```text
+codeagent-wrapper --lite --progress --backend codex
+```
 
-## 为什么需要它？
+本项目不会捆绑或自动下载 `codeagent-wrapper`。使用 Lite 工作流前，请先安装并完成
+Codex CLI 登录，再自行编译 wrapper。
 
-以下命令需要 codeagent-wrapper 才能工作：
-- `/trellis-ccg:review` - 双模型代码审查
-- `/trellis-ccg:debug` - 双模型并行调试
-- `/trellis-ccg:analyze` - 双模型技术分析
-- `/trellis-ccg:team-*` 系列 - 多模型 Agent Teams 工作流
+## 从源码编译
 
-如果你不使用这些多模型功能，可以跳过 wrapper 安装。
-
-## 如何获取 codeagent-wrapper？
-
-### 方案 A：从源码编译（推荐）
-
-**前置条件**: 需要 Go 1.19+ 环境
+需要 Go 1.21 或更高版本。
 
 ```bash
-# 1. Clone ccg-workflow 源码（如果还没有）
-git clone https://github.com/your-org/ccg-workflow.git
-
-# 2. 进入 wrapper 目录
+git clone https://github.com/fengshao1227/ccg-workflow.git
 cd ccg-workflow/codeagent-wrapper
-
-# 3. 编译当前平台的二进制
 go build -o codeagent-wrapper .
-
-# 4. 复制到 ~/.claude/bin/
-mkdir -p ~/.claude/bin
-cp codeagent-wrapper ~/.claude/bin/
-chmod +x ~/.claude/bin/codeagent-wrapper
-
-# 验证安装
-~/.claude/bin/codeagent-wrapper --version
 ```
 
-### 方案 B：编译所有平台（用于分发）
+当前使用的 wrapper 源码位于 `ccg-workflow` 仓库的
+`codeagent-wrapper/` 目录。可以运行以下命令检查构建结果：
 
 ```bash
-cd ccg-workflow/codeagent-wrapper
-./build-all.sh
-
-# 编译结果在 ccg-workflow/bin/ 下：
-# - codeagent-wrapper-darwin-amd64
-# - codeagent-wrapper-darwin-arm64
-# - codeagent-wrapper-linux-amd64
-# - codeagent-wrapper-linux-arm64
-# - codeagent-wrapper-windows-amd64.exe
-# - codeagent-wrapper-windows-arm64.exe
-
-# 复制对应平台的版本到 ~/.claude/bin/codeagent-wrapper
+./codeagent-wrapper --version
+./codeagent-wrapper --help
 ```
 
-### 方案 C：从 release 下载（未来可用）
+## 安装到项目的 `.trellis/bin`
 
-**注意**: 目前 codeagent-wrapper 还没有公开 release，请使用方案 A 或 B。
+推荐把二进制安装在使用 Trellis CCG Lite 的项目中，而不是写入用户主目录。
+`.trellis/bin/` 默认已被该项目的 `.trellis/.gitignore` 忽略。
 
-未来会提供预编译版本：
+macOS/Linux：
+
 ```bash
-# 下载脚本（未来）
-curl -sSL https://raw.githubusercontent.com/your-org/trellis-ccg/main/scripts/install-wrapper.sh | bash
+mkdir -p /path/to/your-project/.trellis/bin
+cp codeagent-wrapper /path/to/your-project/.trellis/bin/codeagent-wrapper
+chmod +x /path/to/your-project/.trellis/bin/codeagent-wrapper
 ```
 
-## 配置 wrapper 路径
+Windows PowerShell（先在 Windows 上执行 `go build`，产物名通常带 `.exe`）：
 
-编辑项目的 `.trellis/config.yaml`：
+```powershell
+New-Item -ItemType Directory -Force C:\path\to\your-project\.trellis\bin
+Copy-Item .\codeagent-wrapper.exe C:\path\to\your-project\.trellis\bin\codeagent-wrapper.exe
+```
+
+在目标项目根目录验证：
+
+```bash
+.trellis/bin/codeagent-wrapper --version
+.trellis/bin/codeagent-wrapper --help
+```
+
+Windows PowerShell 使用：
+
+```powershell
+.\.trellis\bin\codeagent-wrapper.exe --version
+.\.trellis\bin\codeagent-wrapper.exe --help
+```
+
+## wrapper 查找顺序
+
+dispatcher 按以下顺序查找可执行文件：
+
+1. `.trellis/config.yaml` 中的 `trellis-ccg.wrapper_path`；
+2. 项目内 `.trellis/bin/codeagent-wrapper`（Windows 也会识别 `.exe`）；
+3. `PATH` 中的 `codeagent-wrapper`；
+4. 兼容旧安装位置 `~/.claude/bin/codeagent-wrapper`。
+
+默认配置无需修改：
 
 ```yaml
 trellis-ccg:
-  wrapper_path: ~/.claude/bin/codeagent-wrapper  # 修改为你的实际路径
-  team:
-    backend_primary: codex
-    frontend_primary: gemini
+  wrapper_path: .trellis/bin/codeagent-wrapper
+  max_correction_rounds: 2
 ```
 
-## 验证安装
+找不到 wrapper 时，dispatcher 会列出已搜索的位置并明确失败，不会改用 Claude、
+Gemini、team 模式或其他执行后端。
 
-运行以下命令检查 wrapper 是否正常工作：
+## 没有 Go 环境
 
-```bash
-~/.claude/bin/codeagent-wrapper --help
-```
+可以在另一台操作系统和 CPU 架构相同、装有 Go 1.21+ 的机器上编译，然后把二进制
+复制到项目的 `.trellis/bin/`。目前不要假定存在可下载的公开 release；Lite 也不会
+替用户下载或提交该二进制。
 
-如果看到帮助信息，说明安装成功。
+## 使用前检查
 
-## 没有 Go 环境怎么办？
+- Codex CLI 已安装，并已完成登录；
+- wrapper 的 `--version` 和 `--help` 可正常运行；
+- 从项目根目录能找到 `.trellis/bin/codeagent-wrapper`；
+- `.trellis/config.yaml` 没有指向错误的自定义路径。
 
-如果你的机器没有 Go 环境，有以下选择：
-
-1. **安装 Go**: https://go.dev/dl/
-2. **找有 Go 环境的机器编译**，然后复制二进制文件
-3. **等待未来的 release 版本**（会提供预编译二进制）
-4. **暂时不使用多模型功能**，只用 Trellis 原生命令
-
-## 常见问题
-
-### Q: wrapper 是必须的吗？
-A: 不是。如果你只使用 Trellis 原生功能，不需要 wrapper。只有用多模型命令（review/debug/analyze/team）时才需要。
-
-### Q: wrapper 需要 API key 吗？
-A: 是的。使用 Codex 需要 OpenAI API key，使用 Gemini 需要 Google API key。配置方法参考 wrapper 的文档。
-
-### Q: 可以只用一个模型吗？
-A: 可以。在 config.yaml 里把 `backend_primary` 和 `frontend_primary` 都设为同一个模型（如 codex），或者设为 `claude` 使用本地模型。
-
----
-
-更新时间: 2024-07-03
+Lite 不需要 Gemini API key，也不提供多模型、review/debug/team fallback。Codex 的
+认证由 Codex CLI 自身管理。

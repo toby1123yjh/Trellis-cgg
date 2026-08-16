@@ -36,6 +36,27 @@
 <img src="assets/trellis-demo-zh.gif" alt="Trellis 工作流演示" width="100%">
 </p>
 
+## Trellis CCG Lite（当前分支）
+
+`trellis-ccg-lite` 是这个 fork 的最小化 Codex 执行版本：Claude Code/Trellis
+负责规划、任务状态、文档、hooks、验证和收尾；Codex 是唯一实现执行者，并且固定通过
+以下命令启动：
+
+```text
+codeagent-wrapper --lite --progress --backend codex
+```
+
+无需克隆源码，直接在要接入的项目目录中执行：
+
+```bash
+npx trellis-ccg-lite init --claude -u your-name
+```
+
+下方 npm 徽章和通用快速开始仍然指向上游 Trellis；上面的命令才是 Lite 包。如果 npm
+返回 `E404`，说明维护者尚未发布当前分支的包版本，可以先使用 Lite 文档中的源码构建
+备用方案。具体步骤见 [Lite 安装与工作流](./docs/trellis-ccg-lite.md) 和
+[wrapper 安装说明](./docs/CODEAGENT-WRAPPER-SETUP.md)。
+
 ## 为什么用 Trellis？
 
 | 能力 | 带来的改变 |

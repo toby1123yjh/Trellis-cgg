@@ -22,7 +22,14 @@ from typing import Any
 
 
 MAX_CORRECTION_ROUNDS = 2
-DEFAULT_WRAPPER = "~/.claude/bin/codeagent-wrapper"
+DEFAULT_WRAPPER = ".trellis/bin/codeagent-wrapper"
+LEGACY_WRAPPER = "~/.claude/bin/codeagent-wrapper"
+REPORT_SECTIONS = (
+    "## CONTEXT_GATHERED",
+    "## CHANGES_MADE",
+    "## VERIFICATION_RESULTS",
+    "## REMAINING_ISSUES",
+)
 # The wrapper emits the final identifier as ``SESSION_ID:`` on stdout and
 # emits an early identifier as ``Session-ID:`` on stderr so a failed or timed
 # out run can still be resumed. Keep both forms in the audit record.
@@ -80,21 +87,36 @@ def lite_config(root: Path) -> tuple[str, int]:
 
 
 def resolve_wrapper(root: Path, configured: str) -> Path:
-    """Resolve a configured wrapper path, including Windows executable forms."""
-    expanded = os.path.expandvars(os.path.expanduser(configured.strip()))
+    """Resolve project-local, configured, PATH, or legacy wrapper installs."""
+    expanded = os.path.expandvars(
+        os.path.expanduser(configured.strip() or DEFAULT_WRAPPER)
+    )
     raw = Path(expanded)
     candidates: list[Path] = []
+
+    def add_candidate(candidate: Path) -> None:
+        if candidate not in candidates:
+            candidates.append(candidate)
+
     if raw.is_absolute():
-        candidates.append(raw)
+        add_candidate(raw)
     else:
         # A path containing a separator is project-relative. A bare command is
         # also looked up through PATH for users who install the wrapper globally.
         if len(raw.parts) > 1 or "/" in expanded or "\\" in expanded:
-            candidates.append((root / raw).resolve())
+            add_candidate((root / raw).resolve())
+        else:
+            add_candidate((root / raw).resolve())
         found = shutil.which(expanded)
         if found:
-            candidates.append(Path(found))
-        candidates.append(raw)
+            add_candidate(Path(found))
+
+    project_local = (root / DEFAULT_WRAPPER).resolve()
+    add_candidate(project_local)
+    found_default = shutil.which("codeagent-wrapper")
+    if found_default:
+        add_candidate(Path(found_default))
+    add_candidate(Path(os.path.expanduser(LEGACY_WRAPPER)))
 
     suffixes = (".exe", ".cmd", ".bat") if os.name == "nt" else ()
     for candidate in candidates:
@@ -105,9 +127,11 @@ def resolve_wrapper(root: Path, configured: str) -> Path:
                 with_suffix = candidate.with_name(candidate.name + suffix)
                 if with_suffix.is_file():
                     return with_suffix
+    searched = ", ".join(str(candidate) for candidate in candidates)
     raise FileNotFoundError(
         "codeagent-wrapper not found. Set trellis-ccg.wrapper_path in "
-        f".trellis/config.yaml (configured: {configured})"
+        ".trellis/config.yaml or place it under .trellis/bin/ "
+        f"(configured: {configured}; searched: {searched})"
     )
 
 
@@ -212,6 +236,74 @@ def write_run_record(root: Path, record: dict[str, Any]) -> Path:
     return run_path
 
 
+def task_runtime_key(root: Path, task_dir: Path) -> str:
+    """Return the stable POSIX task key stored in Lite run records."""
+    return str(task_dir.relative_to(root)).replace(os.sep, "/")
+
+
+def load_run_records(root: Path) -> list[dict[str, Any]]:
+    """Load the auditable correction history, failing closed on corruption."""
+    runs_dir = root / ".trellis" / ".runtime" / "trellis-ccg-lite" / "runs"
+    if not runs_dir.is_dir():
+        return []
+
+    records: list[dict[str, Any]] = []
+    for run_path in sorted(runs_dir.glob("*.json")):
+        try:
+            parsed = json.loads(run_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError, ValueError) as exc:
+            raise RuntimeError(
+                f"Cannot verify correction history; invalid run record: {run_path}"
+            ) from exc
+        if not isinstance(parsed, dict):
+            raise RuntimeError(
+                f"Cannot verify correction history; invalid run record: {run_path}"
+            )
+        records.append(parsed)
+    return records
+
+
+def validate_resume_history(
+    root: Path,
+    task_dir: Path,
+    session_id: str,
+    round_number: int,
+    max_rounds: int,
+) -> str:
+    """Require a recorded initial run and the next sequential correction."""
+    task_key = task_runtime_key(root, task_dir)
+    matching = [
+        record
+        for record in load_run_records(root)
+        if record.get("task_dir") == task_key
+        and record.get("session_id") == session_id
+    ]
+    initial_runs = [record for record in matching if record.get("mode") == "run"]
+    if not initial_runs:
+        raise RuntimeError(
+            "Resume requires an initial Lite run record for the same task and "
+            f"Codex session: {session_id}"
+        )
+
+    correction_runs = [
+        record for record in matching if record.get("mode") == "resume"
+    ]
+    if len(correction_runs) >= max_rounds:
+        raise RuntimeError(
+            f"Codex session {session_id} already used the allowed "
+            f"{max_rounds} correction round(s)"
+        )
+    expected_round = len(correction_runs) + 1
+    if round_number != expected_round:
+        raise RuntimeError(
+            f"Correction round must be the next sequential round "
+            f"({expected_round}), not {round_number}"
+        )
+
+    parent = matching[-1]
+    return str(parent.get("run_id") or "unknown")
+
+
 def execute(args: argparse.Namespace) -> int:
     root = find_repo_root(Path(args.cwd).resolve() if args.cwd else None)
     configured_wrapper, max_rounds = lite_config(root)
@@ -226,6 +318,15 @@ def execute(args: argparse.Namespace) -> int:
         raise RuntimeError("Resume must specify correction round 1 or 2")
 
     task_dir = resolve_task_dir(root, args.task_dir)
+    parent_run_id: str | None = None
+    if args.mode == "resume":
+        parent_run_id = validate_resume_history(
+            root,
+            task_dir,
+            args.session_id,
+            round_number,
+            max_rounds,
+        )
     wrapper = resolve_wrapper(root, configured_wrapper)
     payload = make_payload(
         root,
@@ -273,19 +374,53 @@ def execute(args: argparse.Namespace) -> int:
 
     session_match = SESSION_RE.search(stdout + "\n" + stderr)
     discovered_session = session_match.group(1) if session_match else None
-    if status == "completed" and args.mode == "run" and not discovered_session:
+    if status == "completed" and not discovered_session:
         status = "failed"
         return_code = 3
-        stderr += "\nCodex completed without a SESSION_ID; resume is unavailable.\n"
+        stderr += (
+            "\nCodex completed without a SESSION_ID; "
+            "the execution handoff is invalid.\n"
+        )
+    if (
+        status == "completed"
+        and args.mode == "resume"
+        and discovered_session
+        and discovered_session != args.session_id
+    ):
+        status = "failed"
+        return_code = 4
+        stderr += (
+            "\nCodex resume returned a different SESSION_ID "
+            f"({discovered_session}); expected {args.session_id}.\n"
+        )
+
+    missing_report_sections = [
+        section
+        for section in REPORT_SECTIONS
+        if not re.search(rf"(?m)^{re.escape(section)}[ \t]*$", stdout)
+    ]
+    report_valid = not missing_report_sections
+    if status == "completed" and not report_valid:
+        status = "failed"
+        return_code = 5
+        stderr += (
+            "\nCodex completed without the required structured report sections: "
+            + ", ".join(missing_report_sections)
+            + "\n"
+        )
 
     finished = datetime.now(timezone.utc)
     record: dict[str, Any] = {
         "run_id": run_id,
         "status": status,
         "mode": args.mode,
-        "task_dir": str(task_dir.relative_to(root)).replace(os.sep, "/"),
-        "session_id": discovered_session or args.session_id,
+        "task_dir": task_runtime_key(root, task_dir),
+        "session_id": args.session_id if args.mode == "resume" else discovered_session,
+        "reported_session_id": discovered_session,
         "correction_round": round_number,
+        "parent_run_id": parent_run_id,
+        "report_valid": report_valid,
+        "missing_report_sections": missing_report_sections,
         "command": command,
         "return_code": return_code,
         "started_at": started.isoformat(),
@@ -310,6 +445,7 @@ def execute(args: argparse.Namespace) -> int:
                 "run_record": str(run_path.relative_to(root)).replace(os.sep, "/"),
                 "session_id": record["session_id"],
                 "correction_round": round_number,
+                "report_valid": report_valid,
             },
             ensure_ascii=False,
         )

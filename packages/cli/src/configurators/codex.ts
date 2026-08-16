@@ -57,9 +57,9 @@ export async function configureCodex(cwd: string): Promise<void> {
   const codexAgentsRoot = path.join(codexRoot, "agents");
   ensureDir(codexAgentsRoot);
 
-  // Codex is a class-2 (pull-based) platform: PreToolUse only fires for Bash
-  // and CollabAgentSpawn hook is not implemented (#15486). Sub-agents must
-  // load Trellis context themselves via the prelude injected here.
+  // Codex is a hybrid: native SubagentStart injects context on current
+  // runtimes, while this pull-based prelude keeps agent profiles usable before
+  // project trust/hook approval and on older runtimes.
   for (const agent of applyPullBasedPreludeToml(getAllAgents())) {
     await writeFile(
       path.join(codexAgentsRoot, `${agent.name}.toml`),
@@ -92,22 +92,18 @@ export async function configureCodex(cwd: string): Promise<void> {
     resolvePlaceholders(getHooksConfig()),
   );
 
-  // NOTE: Codex hooks require `features.hooks = true` in the user's
-  // ~/.codex/config.toml (Codex 0.129+). The legacy `features.codex_hooks = true`
-  // still works on 0.129+ but emits a deprecation warning; pre-0.129 only
-  // accepts `codex_hooks`. Without this flag the hooks.json is ignored and
-  // inject-workflow-state.py will never fire. Codex 0.129+ also gates each
-  // installed hook behind a one-time `/hooks` review — until the user approves
-  // it the workflow breadcrumb won't auto-inject (the trellis-bootstrap
-  // fallback in inject-workflow-state.py covers this case). Documented in
-  // spec/cli/backend/platform-integration.md.
+  // NOTE: Current Codex versions enable hooks by default. Project hooks still
+  // require a trusted project layer and a one-time `/hooks` review. A user can
+  // explicitly disable them with `[features] hooks = false`; in that case the
+  // trellis-bootstrap fallback in inject-workflow-state.py still covers the
+  // main workflow. Documented in spec/cli/backend/platform-integration.md.
   if (!process.env.VITEST && !process.env.TRELLIS_QUIET) {
     process.stderr.write(
-      "⚠️  Codex hooks require `features.hooks = true` in your " +
-        "~/.codex/config.toml (Codex 0.129+; older versions: `codex_hooks = true`). " +
-        "On Codex 0.129+ also run `/hooks` once to approve the Trellis " +
-        "UserPromptSubmit hook. Without these the Trellis workflow breadcrumb " +
-        "won't auto-inject. See Trellis docs for details.\n",
+      "⚠️  Codex hooks are enabled by default, but project hooks require " +
+        "project trust and a one-time `/hooks` review. Approve the Trellis " +
+        "UserPromptSubmit and SubagentStart hooks there. If `[features] " +
+        "hooks = false` is set, automatic Trellis context injection stays " +
+        "disabled. See Trellis docs for details.\n",
     );
   }
 

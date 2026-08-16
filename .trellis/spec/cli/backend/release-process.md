@@ -15,6 +15,42 @@ Trellis publishes two npm packages from one git tag:
 
 The package pair is version-locked. Every published version must exist for both packages with the exact same version and npm dist-tag.
 
+## Trellis CCG Lite fork exception
+
+The `trellis-ccg-lite` branch is a fork-specific distribution and does not use
+the upstream dual-package release route above:
+
+| Item | Lite contract |
+|---|---|
+| npm package | `trellis-ccg-lite` |
+| canonical npx binary | `trellis-ccg-lite` |
+| core dependency | Existing public `@mindfoldhq/trellis-core` at the exact CLI version |
+| publication unit | `packages/cli` tarball only |
+| workflow | Manual `.github/workflows/publish-lite.yml` |
+
+The upstream `.github/workflows/publish.yml` job is repository-guarded to
+`mindfold-ai/Trellis`; it must not publish from this fork. Lite releases do not
+push a `v*` tag through the upstream workflow and never republish core.
+
+Before manually running the Lite workflow:
+
+1. Confirm the selected ref contains `packages/cli` named
+   `trellis-ccg-lite` with a same-named bin.
+2. Confirm the CLI and core source versions match and that the exact core
+   version is already public on npm.
+3. Run root typecheck, tests, lint, and build.
+4. Pack `packages/cli`; inspect the tarball for `README.md`, `LICENSE`, the
+   same-named bin, and the Lite extension templates.
+5. Initialize a clean project through the tarball with npm exec/npx and verify
+   the generated Lite inventory plus `trellis update --dry-run`.
+6. Publish the already-verified tarball only through the manual workflow, then
+   verify public npm visibility.
+
+`packages/cli/scripts/sync-package-license.js` performs the package-local
+license copy with Node so pack/publish works on Windows and Unix. It marks
+generated copies and removes one after packing only when its contents still
+match the repository license.
+
 ---
 
 ## CI-only publishing

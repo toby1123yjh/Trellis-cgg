@@ -17,6 +17,9 @@ concurrency:
 
 jobs:
   publish:
+    # This workflow belongs to the upstream dual-package release contract.
+    # Forks publish their own packages through a fork-specific workflow.
+    if: github.repository == 'mindfold-ai/Trellis'
     runs-on: ubuntu-latest
     permissions:
       contents: read

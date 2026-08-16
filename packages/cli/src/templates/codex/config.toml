@@ -9,13 +9,10 @@
 # Keep AGENTS.md as the primary project instruction file.
 project_doc_fallback_filenames = ["AGENTS.md"]
 
-# Codex hooks (`hooks.json` in this directory) only fire when the user
-# has enabled them in their USER-level config: `[features].hooks = true`
-# in ~/.codex/config.toml (Codex 0.129+; legacy name: `codex_hooks = true`,
-# still works but emits a deprecation warning on 0.129+). Project-level
-# config.toml cannot set feature flags; they must be user-level.
-# Codex 0.129+ additionally gates each installed hook behind a one-time
-# `/hooks` TUI review; until the user approves it, the hook stays inactive.
+# Codex hooks (`hooks.json` in this directory) are enabled by default. They load
+# only from a trusted project layer, and each installed command hook requires a
+# one-time `/hooks` TUI review. A user-level `[features] hooks = false` setting
+# explicitly disables them; remove that override or set it to true when needed.
 
 # NOTE: Trellis intentionally does NOT write a [features.multi_agent_v2]
 # block here. Codex CLI changed `features` deserialization between 0.130

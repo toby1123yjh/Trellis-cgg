@@ -115,7 +115,7 @@ channel:
 # Codex is the fixed implementation executor. Trellis remains responsible for
 # task artifacts, specs, lifecycle state, and result verification.
 trellis-ccg:
-  wrapper_path: ~/.claude/bin/codeagent-wrapper
+  wrapper_path: .trellis/bin/codeagent-wrapper
   executor: codex
   lite_mode: true
   max_correction_rounds: 2
