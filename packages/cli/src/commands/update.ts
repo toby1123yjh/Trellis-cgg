@@ -65,6 +65,7 @@ import {
   type RegistrySource,
 } from "../utils/template-fetcher.js";
 import { loadSpecRegistryConfig } from "../utils/registry-config.js";
+import { ensureLiteWrapperForProject } from "../utils/wrapper-installer.js";
 
 export interface UpdateOptions {
   dryRun?: boolean;
@@ -1900,6 +1901,13 @@ export async function update(options: UpdateOptions): Promise<void> {
         "⚠️  --allow-downgrade flag set. Proceeding with downgrade...\n",
       ),
     );
+  }
+
+  // Keep dry-run read-only and do not mutate a newer project when downgrade
+  // protection rejects the update. This still runs before the same-version
+  // no-op return so update can repair a missing or outdated Lite wrapper.
+  if (!options.dryRun) {
+    await ensureLiteWrapperForProject(cwd);
   }
 
   // Migration metadata is displayed at the end to prevent scrolling off screen

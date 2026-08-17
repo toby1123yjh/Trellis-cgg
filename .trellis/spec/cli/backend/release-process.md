@@ -24,7 +24,7 @@ the upstream dual-package release route above:
 |---|---|
 | npm package | `trellis-ccg-lite` |
 | canonical npx binary | `trellis-ccg-lite` |
-| core dependency | Existing public `@mindfoldhq/trellis-core` at the exact CLI version |
+| core dependency | Existing public `@mindfoldhq/trellis-core` at the exact version declared by the checked-out `packages/core` source |
 | publication unit | `packages/cli` tarball only |
 | workflow | Manual `.github/workflows/publish-lite.yml` |
 
@@ -36,8 +36,9 @@ Before manually running the Lite workflow:
 
 1. Confirm the selected ref contains `packages/cli` named
    `trellis-ccg-lite` with a same-named bin.
-2. Confirm the CLI and core source versions match and that the exact core
-   version is already public on npm.
+2. Confirm the core source version is already public on npm. The Lite CLI may
+   advance independently; its packed dependency must equal the checked-out
+   `packages/core/package.json` version rather than the Lite CLI version.
 3. Run root typecheck, tests, lint, and build.
 4. Pack `packages/cli`; inspect the tarball for `README.md`, `LICENSE`, the
    same-named bin, and the Lite extension templates.

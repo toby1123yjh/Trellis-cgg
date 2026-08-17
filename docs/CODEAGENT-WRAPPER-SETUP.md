@@ -1,99 +1,81 @@
-# Trellis CCG Lite：codeagent-wrapper 安装说明
+# Trellis CCG Lite：wrapper 安装与排障
 
-Trellis CCG Lite 只使用 Codex 作为代码执行者。Claude/Trellis 负责规划、任务状态、
-hooks、验证和收尾，dispatcher 始终使用下面的固定命令调用 wrapper：
+正常情况下无需单独安装 wrapper。运行下面一条命令即可：
+
+```bash
+npx trellis-ccg-lite@latest init --claude -u your-name
+```
+
+CLI 会按当前操作系统和 CPU 下载 `codeagent-wrapper` 5.14.0，校验后写入：
 
 ```text
-codeagent-wrapper --lite --progress --backend codex
+.trellis/bin/codeagent-wrapper      # macOS/Linux
+.trellis/bin/codeagent-wrapper.exe  # Windows
 ```
 
-本项目不会捆绑或自动下载 `codeagent-wrapper`。使用 Lite 工作流前，请先安装并完成
-Codex CLI 登录，再自行编译 wrapper。
+支持的平台为 macOS、Linux、Windows × x64、arm64。`.trellis/bin/` 默认被
+Git 忽略。
 
-## 从源码编译
+## 下载和更新策略
 
-需要 Go 1.21 或更高版本。
+下载顺序：
+
+1. Cloudflare 镜像：`https://github.20031227.xyz/preset`
+2. 上游 GitHub Release：`fengshao1227/ccg-workflow` 的 `preset` release
+
+CLI 先写临时文件，在 Unix 设置 `755` 权限，再运行 `--version`。只有输出中的
+版本精确等于 5.14.0 才替换正式文件。已有正确版本会直接跳过；任何下载或验证失败
+都会保留旧 wrapper，并清理下载临时文件。
+
+已有 Lite 项目可以运行以下任一命令修复缺失或过期版本：
 
 ```bash
-git clone https://github.com/fengshao1227/ccg-workflow.git
-cd ccg-workflow/codeagent-wrapper
-go build -o codeagent-wrapper .
+npx trellis-ccg-lite@latest init --claude -u your-name
+npx trellis-ccg-lite@latest update
 ```
 
-当前使用的 wrapper 源码位于 `ccg-workflow` 仓库的
-`codeagent-wrapper/` 目录。可以运行以下命令检查构建结果：
-
-```bash
-./codeagent-wrapper --version
-./codeagent-wrapper --help
-```
-
-## 安装到项目的 `.trellis/bin`
-
-推荐把二进制安装在使用 Trellis CCG Lite 的项目中，而不是写入用户主目录。
-`.trellis/bin/` 默认已被该项目的 `.trellis/.gitignore` 忽略。
+## 验证
 
 macOS/Linux：
 
 ```bash
-mkdir -p /path/to/your-project/.trellis/bin
-cp codeagent-wrapper /path/to/your-project/.trellis/bin/codeagent-wrapper
-chmod +x /path/to/your-project/.trellis/bin/codeagent-wrapper
-```
-
-Windows PowerShell（先在 Windows 上执行 `go build`，产物名通常带 `.exe`）：
-
-```powershell
-New-Item -ItemType Directory -Force C:\path\to\your-project\.trellis\bin
-Copy-Item .\codeagent-wrapper.exe C:\path\to\your-project\.trellis\bin\codeagent-wrapper.exe
-```
-
-在目标项目根目录验证：
-
-```bash
 .trellis/bin/codeagent-wrapper --version
-.trellis/bin/codeagent-wrapper --help
 ```
 
-Windows PowerShell 使用：
+Windows PowerShell：
 
 ```powershell
 .\.trellis\bin\codeagent-wrapper.exe --version
-.\.trellis\bin\codeagent-wrapper.exe --help
 ```
 
-## wrapper 查找顺序
+预期版本为 `5.14.0`。
 
-dispatcher 按以下顺序查找可执行文件：
+## 常见问题
 
-1. `.trellis/config.yaml` 中的 `trellis-ccg.wrapper_path`；
-2. 项目内 `.trellis/bin/codeagent-wrapper`（Windows 也会识别 `.exe`）；
-3. `PATH` 中的 `codeagent-wrapper`；
-4. 兼容旧安装位置 `~/.claude/bin/codeagent-wrapper`。
+### 两个下载源都失败
 
-默认配置无需修改：
+检查代理、防火墙和 GitHub 连通性，然后重跑 init 或 update。CLI 会使用 Trellis
+已配置的代理，并在错误信息中分别列出镜像和 GitHub 的失败原因。
+
+### Unsupported platform
+
+目前只发布 macOS、Linux、Windows 的 x64/arm64 资产。其他系统或 CPU 架构不会
+下载不匹配的二进制。
+
+### 自定义 wrapper 路径
+
+默认无需修改。确有需要时可在 `.trellis/config.yaml` 设置：
 
 ```yaml
 trellis-ccg:
-  wrapper_path: .trellis/bin/codeagent-wrapper
+  wrapper_path: /absolute/path/to/codeagent-wrapper
   max_correction_rounds: 2
 ```
 
-找不到 wrapper 时，dispatcher 会列出已搜索的位置并明确失败，不会改用 Claude、
-Gemini、team 模式或其他执行后端。
+dispatcher 的查找顺序是显式配置、项目 `.trellis/bin/`、`PATH`、兼容旧位置
+`~/.claude/bin/`。找不到时会明确失败，不会切换成其他模型执行实现。
 
-## 没有 Go 环境
+### Codex 认证失败
 
-可以在另一台操作系统和 CPU 架构相同、装有 Go 1.21+ 的机器上编译，然后把二进制
-复制到项目的 `.trellis/bin/`。目前不要假定存在可下载的公开 release；Lite 也不会
-替用户下载或提交该二进制。
-
-## 使用前检查
-
-- Codex CLI 已安装，并已完成登录；
-- wrapper 的 `--version` 和 `--help` 可正常运行；
-- 从项目根目录能找到 `.trellis/bin/codeagent-wrapper`；
-- `.trellis/config.yaml` 没有指向错误的自定义路径。
-
-Lite 不需要 Gemini API key，也不提供多模型、review/debug/team fallback。Codex 的
-认证由 Codex CLI 自身管理。
+wrapper 使用本机 Codex CLI 的认证状态。先在终端确认 Codex CLI 已安装并完成登录；
+Lite 不需要 Gemini API key，也不会接入其他执行后端。

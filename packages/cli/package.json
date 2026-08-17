@@ -1,6 +1,6 @@
 {
   "name": "trellis-ccg-lite",
-  "version": "0.6.5",
+  "version": "0.6.6",
   "description": "Codex-first Trellis workflow with Claude Code as the control plane and Codex as the sole implementation executor",
   "type": "module",
   "main": "./dist/index.js",

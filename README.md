@@ -50,15 +50,13 @@ codeagent-wrapper --lite --progress --backend codex
 Initialize the current repository without cloning this source tree:
 
 ```bash
-npx trellis-ccg-lite init --claude -u your-name
+npx trellis-ccg-lite@latest init --claude -u your-name
 ```
 
-The npm badges and general Quick Start below still describe upstream Trellis;
-the command above is the Lite package. If npm returns `E404`, the maintainer
-has not published this branch's package version yet, and the source-build
-fallback in the Lite guide can be used. See the
-[Lite installation and workflow guide](./docs/trellis-ccg-lite.md) and the
-[wrapper setup guide](./docs/CODEAGENT-WRAPPER-SETUP.md).
+The command installs Trellis plus the verified project-local executor wrapper;
+Go and a separate wrapper installation step are not required. The npm badges
+and general Quick Start below still describe upstream Trellis. See the
+[Lite installation and workflow guide](./docs/trellis-ccg-lite.md).
 
 ## Why Trellis?
 

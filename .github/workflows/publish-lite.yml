@@ -53,7 +53,6 @@ jobs:
           PACKAGE_VERSION=$(node -p "require('./packages/cli/package.json').version")
           CORE_VERSION=$(node -p "require('./packages/core/package.json').version")
           test "$PACKAGE_NAME" = "trellis-ccg-lite"
-          test "$PACKAGE_VERSION" = "$CORE_VERSION"
           echo "name=$PACKAGE_NAME" >> "$GITHUB_OUTPUT"
           echo "version=$PACKAGE_VERSION" >> "$GITHUB_OUTPUT"
           echo "core_version=$CORE_VERSION" >> "$GITHUB_OUTPUT"
@@ -100,8 +99,9 @@ jobs:
           tar -tzf "$TARBALL" | grep -Fx 'package/README.md'
           tar -tzf "$TARBALL" | grep -Fx 'package/LICENSE'
           tar -tzf "$TARBALL" | grep -Fx 'package/dist/templates/common/extensions/trellis-ccg-lite/dispatch.py'
+          tar -tzf "$TARBALL" | grep -Fx 'package/dist/utils/wrapper-installer.js'
           PACKED_CORE=$(tar -xOzf "$TARBALL" package/package.json | node -e "let input=''; process.stdin.on('data', chunk => input += chunk); process.stdin.on('end', () => process.stdout.write(JSON.parse(input).dependencies['@mindfoldhq/trellis-core'] || ''));" )
-          test "$PACKED_CORE" = "$VERSION"
+          test "$PACKED_CORE" = "${{ steps.metadata.outputs.core_version }}"
 
       - name: Publish the verified Lite tarball
         if: steps.availability.outputs.publish == 'true'

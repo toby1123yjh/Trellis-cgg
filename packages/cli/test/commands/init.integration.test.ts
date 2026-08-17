@@ -24,6 +24,12 @@ vi.mock("node:child_process", () => ({
   execSync: vi.fn().mockReturnValue(""),
 }));
 
+const wrapperInstaller = vi.hoisted(() => ({
+  ensureLiteWrapperForProject: vi.fn().mockResolvedValue({ status: "current" }),
+}));
+
+vi.mock("../../src/utils/wrapper-installer.js", () => wrapperInstaller);
+
 const registryDownload = vi.hoisted(() => ({
   files: new Map<string, string>(),
 }));
@@ -65,6 +71,7 @@ describe("init() integration", () => {
     vi.spyOn(console, "log").mockImplementation(noop);
     vi.spyOn(console, "error").mockImplementation(noop);
     registryDownload.files.clear();
+    wrapperInstaller.ensureLiteWrapperForProject.mockClear();
     vi.mocked(execSync).mockClear();
     vi.mocked(execSync).mockImplementation(((cmd: string) => {
       const expectedPythonCmd =
@@ -158,6 +165,10 @@ describe("init() integration", () => {
 
   it("#2 single platform creates only that platform directory", async () => {
     await init({ yes: true, claude: true });
+
+    expect(wrapperInstaller.ensureLiteWrapperForProject).toHaveBeenCalledWith(
+      tmpDir,
+    );
 
     expect(fs.existsSync(path.join(tmpDir, ".claude"))).toBe(true);
     expect(fs.existsSync(path.join(tmpDir, ".cursor"))).toBe(false);
@@ -1377,6 +1388,7 @@ describe("init() integration", () => {
     // init routes through the aborted-init recovery instead of handleReinit
     await init({ yes: true, cursor: true, user: "alice" });
     expect(fs.existsSync(path.join(tmpDir, ".claude"))).toBe(false);
+    wrapperInstaller.ensureLiteWrapperForProject.mockClear();
 
     const { confirms } = await installStatuslinePromptMock(true);
     await init({ claude: true });
@@ -1390,6 +1402,10 @@ describe("init() integration", () => {
       fs.readFileSync(path.join(tmpDir, ".claude", "settings.json"), "utf-8"),
     ) as Record<string, unknown>;
     expect(settings).toHaveProperty("statusLine");
+    expect(wrapperInstaller.ensureLiteWrapperForProject).toHaveBeenCalledOnce();
+    expect(wrapperInstaller.ensureLiteWrapperForProject).toHaveBeenCalledWith(
+      tmpDir,
+    );
   });
 
   it("#29 reinit add-platform: no confirm when claude is already configured", async () => {

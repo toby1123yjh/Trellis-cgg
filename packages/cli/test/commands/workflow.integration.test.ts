@@ -31,6 +31,10 @@ vi.mock("node:child_process", () => ({
   }),
 }));
 
+vi.mock("../../src/utils/wrapper-installer.js", () => ({
+  ensureLiteWrapperForProject: vi.fn().mockResolvedValue({ status: "current" }),
+}));
+
 import { init } from "../../src/commands/init.js";
 import { update } from "../../src/commands/update.js";
 import { runWorkflowCommand, WorkflowCommandError } from "../../src/commands/workflow.js";

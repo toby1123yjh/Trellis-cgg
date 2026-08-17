@@ -66,6 +66,7 @@ import {
 import { setupProxy, maskProxyUrl } from "../utils/proxy.js";
 import { toPosix } from "../utils/posix.js";
 import { updateHashes } from "../utils/template-hash.js";
+import { ensureLiteWrapperForProject } from "../utils/wrapper-installer.js";
 
 const MIN_PYTHON_MAJOR = 3;
 const MIN_PYTHON_MINOR = 9;
@@ -1201,7 +1202,10 @@ export async function init(options: InitOptions): Promise<void> {
       developerName,
       pythonCmd,
     );
-    if (reinitDone) return;
+    if (reinitDone) {
+      await ensureLiteWrapperForProject(cwd);
+      return;
+    }
     // reinitDone === false means user chose "full re-initialize" → fall through
   }
 
@@ -2044,6 +2048,8 @@ export async function init(options: InitOptions): Promise<void> {
       }
     }
   }
+
+  await ensureLiteWrapperForProject(cwd);
 }
 
 /**

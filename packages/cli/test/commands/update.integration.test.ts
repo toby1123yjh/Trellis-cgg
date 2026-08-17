@@ -28,6 +28,12 @@ vi.mock("node:child_process", () => ({
   }),
 }));
 
+const wrapperInstaller = vi.hoisted(() => ({
+  ensureLiteWrapperForProject: vi.fn().mockResolvedValue({ status: "current" }),
+}));
+
+vi.mock("../../src/utils/wrapper-installer.js", () => wrapperInstaller);
+
 const registryDownload = vi.hoisted(() => ({
   files: new Map<string, string>(),
 }));
@@ -161,6 +167,7 @@ describe("update() integration", () => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "trellis-update-int-"));
     vi.spyOn(process, "cwd").mockReturnValue(tmpDir);
     registryDownload.files.clear();
+    wrapperInstaller.ensureLiteWrapperForProject.mockClear();
     // eslint-disable-next-line @typescript-eslint/no-empty-function
     const noop = () => {};
     vi.spyOn(console, "log").mockImplementation(noop);
@@ -179,6 +186,20 @@ describe("update() integration", () => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
     fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("checks the Lite wrapper before an up-to-date return but not in dry-run", async () => {
+    await setupProject();
+    wrapperInstaller.ensureLiteWrapperForProject.mockClear();
+
+    await update({ force: true });
+    expect(wrapperInstaller.ensureLiteWrapperForProject).toHaveBeenCalledWith(
+      tmpDir,
+    );
+
+    wrapperInstaller.ensureLiteWrapperForProject.mockClear();
+    await update({ dryRun: true });
+    expect(wrapperInstaller.ensureLiteWrapperForProject).not.toHaveBeenCalled();
   });
 
   it("#1 same version update is a true no-op (zero file changes, no backup)", async () => {
@@ -516,11 +537,13 @@ describe("update() integration", () => {
     // Set project version to future
     const versionPath = path.join(tmpDir, DIR_NAMES.WORKFLOW, ".version");
     fs.writeFileSync(versionPath, "99.99.99");
+    wrapperInstaller.ensureLiteWrapperForProject.mockClear();
 
     await update({});
 
     // Version should NOT be changed
     expect(fs.readFileSync(versionPath, "utf-8")).toBe("99.99.99");
+    expect(wrapperInstaller.ensureLiteWrapperForProject).not.toHaveBeenCalled();
   });
 
   it("#11 allowDowngrade permits update when CLI is older", async () => {

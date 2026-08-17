@@ -31,6 +31,10 @@ vi.mock("node:child_process", () => ({
   }),
 }));
 
+vi.mock("../../src/utils/wrapper-installer.js", () => ({
+  ensureLiteWrapperForProject: vi.fn().mockResolvedValue({ status: "current" }),
+}));
+
 // === Imports ===
 
 import { init } from "../../src/commands/init.js";

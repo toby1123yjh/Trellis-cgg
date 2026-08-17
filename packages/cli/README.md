@@ -6,13 +6,13 @@ Codex is the sole executor for implementation and implementation fixes.
 
 ## Quick start
 
-Requirements: Node.js 18.17+, Python 3.9+, Claude Code, Codex CLI, and the
-project-local `codeagent-wrapper` binary described below.
+Requirements: Node.js 18.17+, Python 3.9+, Claude Code, and Codex CLI. No Go
+toolchain or manual wrapper installation is required.
 
 From the project you want to initialize, run:
 
 ```bash
-npx trellis-ccg-lite init --claude -u your-name
+npx trellis-ccg-lite@latest init --claude -u your-name
 ```
 
 For a non-interactive initialization:
@@ -26,6 +26,7 @@ repository, including:
 
 ```text
 .trellis/
+  bin/codeagent-wrapper[.exe]
   extensions/trellis-ccg-lite/
 .claude/
   commands/trellis-ccg/codex-exec.md
@@ -37,22 +38,24 @@ also preserved. Add `--codex` only if you also want Codex's native Trellis
 skills and hooks in the same project:
 
 ```bash
-npx trellis-ccg-lite init --claude --codex -u your-name
+npx trellis-ccg-lite@latest init --claude --codex -u your-name
 ```
 
-## Install the executor wrapper
+## Automatic executor installation
 
-The npm package does not bundle `codeagent-wrapper`. Put the wrapper for your
-platform at the default project-local path:
+During `init`, the CLI downloads and verifies `codeagent-wrapper` 5.14.0 for
+the current OS and CPU, then installs it at the default project-local path:
 
 ```text
 .trellis/bin/codeagent-wrapper      # macOS/Linux
 .trellis/bin/codeagent-wrapper.exe  # Windows
 ```
 
-The `.trellis/bin/` directory is ignored by Git. A global `PATH` installation
-and an explicitly configured wrapper path are also supported. See the
-[wrapper setup guide](https://github.com/toby1123yjh/Trellis-cgg/blob/trellis-ccg-lite/docs/CODEAGENT-WRAPPER-SETUP.md).
+The China-friendly mirror is tried first, followed by the upstream GitHub
+release. A download is verified with `--version` before it can replace an
+existing wrapper. Re-running `init` or
+`npx trellis-ccg-lite@latest update` repairs a missing or outdated wrapper.
+`.trellis/bin/` is ignored by Git.
 
 ## Use it
 
