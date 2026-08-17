@@ -3208,7 +3208,7 @@ describe("regression: current-task path normalization", () => {
     );
   });
 
-  it("[#240] Codex workflow-state output starts with codex mode, not generic sub-agent notice", () => {
+  it("[#240] Codex workflow-state output includes auto mode before workflow state", () => {
     setupTaskRepo();
     writeProjectFile(
       path.join(".codex", "hooks", "inject-workflow-state.py"),
@@ -3227,7 +3227,7 @@ describe("regression: current-task path normalization", () => {
     const ctx = parsed.hookSpecificOutput.additionalContext;
     expect(parsed.hookSpecificOutput.hookEventName).toBe("UserPromptSubmit");
     expect(ctx).not.toContain("<sub-agent-notice>");
-    expect(ctx).toContain("<codex-mode>inline:");
+    expect(ctx).toContain("<codex-mode>auto:");
     expect(ctx.indexOf("</codex-mode>")).toBeLessThan(
       ctx.indexOf("<workflow-state>"),
     );
@@ -4146,7 +4146,7 @@ print(len(entries))
     writeProjectFile(path.join(".trellis", "config.yaml"), content);
   }
 
-  it("[issue-codex-dispatch-mode] codex breadcrumb defaults to inline dispatch when config absent", () => {
+  it("[issue-codex-dispatch-mode] codex breadcrumb defaults to auto dispatch when config absent", () => {
     setupTaskRepo();
     writeSessionContext("session_workflow-a", ".trellis/tasks/issue-106");
     const codexHookPath = writeCodexInjectHook();
@@ -4164,8 +4164,8 @@ print(len(entries))
       runPython(codexHookPath, JSON.stringify({ cwd: tmpDir, session_id: "workflow-a" })),
     ) as { hookSpecificOutput: { additionalContext: string } };
     const ctx = parsed.hookSpecificOutput.additionalContext;
-    expect(ctx).toContain("MAIN SESSION edits code");
-    expect(ctx).not.toContain("DISPATCH the trellis-implement");
+    expect(ctx).toContain("DISPATCH the trellis-implement");
+    expect(ctx).not.toContain("MAIN SESSION edits code");
   });
 
   it("[issue-codex-dispatch-mode] codex breadcrumb routes to plain status when codex.dispatch_mode=sub-agent", () => {
@@ -4314,8 +4314,8 @@ print(len(entries))
     ) as Record<string, string>;
     expect(result.codex_inline).toBe("in_progress-inline");
     expect(result.codex_subagent).toBe("in_progress");
-    // Default for codex (missing config) is inline since 0.5.9.
-    expect(result.codex_missing).toBe("in_progress-inline");
+    // Lite defaults Codex to automatic implement/check dispatch.
+    expect(result.codex_missing).toBe("in_progress");
     expect(result.claude_inline).toBe("in_progress");
   });
 
@@ -4418,21 +4418,21 @@ print(len(entries))
       "[workflow-state:in_progress]\nDISPATCH the trellis-implement.\n[/workflow-state:in_progress]\n[workflow-state:in_progress-inline]\nMAIN SESSION inline edit.\n[/workflow-state:in_progress-inline]\n",
     );
 
-    // Default (no config.yaml) → inline banner.
+    // Default (no config.yaml) uses automatic Codex dispatch.
     const defaultRun = JSON.parse(
       runPython(codexHookPath, JSON.stringify({ cwd: tmpDir, session_id: "workflow-a" })),
     ) as { hookSpecificOutput: { additionalContext: string } };
     expect(defaultRun.hookSpecificOutput.additionalContext).toContain(
-      "<codex-mode>inline: the main session implements/checks directly; do not dispatch implement/check sub-agents.</codex-mode>",
+      "<codex-mode>auto: implement/check work defaults to Trellis sub-agents; native Codex context injection is preferred and child-side loading is the fallback. The main session still coordinates, clarifies, updates specs, commits, and finishes.</codex-mode>",
     );
 
-    // Explicit sub-agent → sub-agent banner.
+    // The legacy sub-agent value is an alias for auto.
     writeConfigYaml("codex:\n  dispatch_mode: sub-agent\n");
     const subAgentRun = JSON.parse(
       runPython(codexHookPath, JSON.stringify({ cwd: tmpDir, session_id: "workflow-a" })),
     ) as { hookSpecificOutput: { additionalContext: string } };
     expect(subAgentRun.hookSpecificOutput.additionalContext).toContain(
-      "<codex-mode>sub-agent: implement/check work defaults to Trellis sub-agents; the main session still coordinates, clarifies, updates specs, commits, and finishes.</codex-mode>",
+      "<codex-mode>auto: implement/check work defaults to Trellis sub-agents; native Codex context injection is preferred and child-side loading is the fallback. The main session still coordinates, clarifies, updates specs, commits, and finishes.</codex-mode>",
     );
   });
 
